@@ -201,7 +201,7 @@ describe('unheredoc plugin tests', () => {
       const content = fs.readFileSync(pluginPath, 'utf8');
       const parsed = JSON.parse(content);
       assert.strictEqual(parsed.name, 'unheredoc');
-      assert.match(parsed.version, /^d+.d+.d+$/);
+      assert.match(parsed.version, /^\d+\.\d+\.\d+$/);
       assert.ok(parsed.description);
       assert.ok(parsed.author);
     });
