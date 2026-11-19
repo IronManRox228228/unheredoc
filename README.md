@@ -2,6 +2,26 @@
 
 `unheredoc` is a Claude Code plugin that prevents wasteful token re-transmissions when Bash heredocs or PowerShell here-strings fail due to shell escaping or quoting errors.
 
+## Fewer output tokens. Lower bill.
+
+Output tokens are the most expensive tokens you pay for, and a failed heredoc makes the model write the whole command out a second time. `unheredoc` makes the retry a one-line `sed` instead.
+
+**Benchmark: a 193-line heredoc with a syntax error, `claude-haiku-5-5`, headless Claude Code, 5 runs per arm.**
+
+| | Without | With `unheredoc` | Change |
+|---|---|---|---|
+| Output tokens | 8,658 | **5,266** | **-39%** |
+| Cost per run | $0.0110 | **$0.0087** | **-21%** |
+| API time | 27.1 s | **24.0 s** | **-11%** |
+
+- All 5 runs with the plugin fixed the script with a single `sed` and rerun. No resend, no `Read`.
+- Every run in both arms ended with a working script.
+- The saving grows with the size of the command. The resend costs more as the body gets longer. The fix stays about the same.
+
+**Be aware:** on a short, 40-line heredoc the plugin saved nothing. The resend is already cheap, and the fix still takes two turns. It pays off on long scripts, config files and multi-file generation.
+
+Small sample (5 runs per arm, one task, one model). Run your own: set `UNHEREDOC_DEBUG=1` and compare sessions with the plugin on and off.
+
 ## What it does
 
 When an AI coding agent executes shell commands with multiline bodies (such as `cat <<EOF` or `@' ... '@`), shell quoting issues often cause the command to fail. Normally, the agent repeats the entire multiline payload on retry, consuming excessive output tokens.
@@ -22,12 +42,13 @@ The model retains full autonomy over fixing the issue; the plugin never alters t
 2. **PostToolUse (`post`) / PostToolUseFailure (`fail`) Hook:**
    - On success: Immediately deletes the temporary script and cleans up the index.
    - On failure: Leaves the file intact and responds with structured JSON:
-     - Reports the relative script location and total line count.
-     - Displays an excerpt of up to 15 numbered lines around the error (or the first 10 lines if unlocalized).
+     - Reports the absolute script location and total line count.
+     - Displays an excerpt of up to 15 numbered lines around the error (or the first 10 lines if unlocalized). Line numbers from bash are corrected for the offset Claude Code's `eval` wrapper adds.
      - Provides the rerun command:
        - Bash: `bash "<path>"`
        - PowerShell: `pwsh -NoProfile -ExecutionPolicy Bypass -File "<path>"`
-     - Reminds the agent to edit only the broken lines using file editing tools or `sed -i`.
+     - Tells the agent not to resend the command, but to fix the saved file with one `sed -i` (no `Read` needed) and rerun it.
+   - Failures are detected from `PostToolUseFailure`, from a nonzero exit code, and from the shapes Claude Code uses for failed commands that still arrive as a plain `PostToolUse` (a trailing `exit=N` line, bash's `syntax error` message, or the unterminated `here-document` warning).
 
 ## Installation
 

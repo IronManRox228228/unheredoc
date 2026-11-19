@@ -4,7 +4,9 @@ const path = require('path');
 
 const PARSE_ERRORS = /syntax error|unexpected EOF|here-document|ParserError|The string is missing the terminator|Missing closing/i;
 const HEREDOC_EOF_WARNING = /warning: here-document at line \d+ delimited by end-of-file/;
-const HEREDOC_REGEX =/<<\s*-?\s*['"]?[a-zA-Z_][\w-]*['"]?/;
+const TRAILING_NONZERO_EXIT = /(?:^|\n)exit=[1-9]\d*\s*$/;
+const BASH_SYNTAX_ERROR = /(?:^|\n)\S*bash: (?:eval: )?line \d+: syntax error/;
+const HEREDOC_REGEX = /<<\s*-?\s*['"]?[a-zA-Z_][\w-]*['"]?/;
 const HERESTRING_REGEX = /@['"]\s*$/m;
 
 function shouldSave(cmd) {
@@ -24,7 +26,10 @@ function detectFailure(event, data = {}) {
     if (PARSE_ERRORS.test(text)) return true;
     // Claude Code's Bash tool merges stderr into stdout, and an unterminated heredoc only warns (exit 0).
     // Match bash's exact warning so ordinary output mentioning "syntax error" is not a false positive.
-    return typeof res.stdout === 'string' && HEREDOC_EOF_WARNING.test(res.stdout);
+    // Seen live: a failed command can arrive as a plain PostToolUse (no error flag) whose stdout ends
+    // with a trailing "exit=N" line and bash's own "bash: line N: syntax error" message.
+    const out = typeof res.stdout === 'string' ? res.stdout : '';
+    return HEREDOC_EOF_WARNING.test(out) || TRAILING_NONZERO_EXIT.test(out) || BASH_SYNTAX_ERROR.test(out);
   }
   return typeof res === 'string' && PARSE_ERRORS.test(res);
 }
@@ -83,7 +88,7 @@ function buildMessage(relPath, content = '', errorText = '', isPowerShell = fals
   return [
     `unheredoc: command saved to ${relPath} (${lines.length} lines).`,
     excerpt,
-    'Fix only the broken lines (Read then Edit, or sed -i for one line). Do not resend the full command.',
+    'Do not resend the command. Fix the broken lines in the saved file with one Bash sed -i (use the line numbers above; no Read needed), then rerun it.',
     `Rerun command: ${rerunCmd}`,
     "Note: runs in a subshell; cd/export/functions won't persist."
   ].filter(Boolean).join('\n');

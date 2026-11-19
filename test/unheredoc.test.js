@@ -115,6 +115,14 @@ describe('unheredoc plugin tests', () => {
       assert.strictEqual(detectFailure('post', { tool_response: { stdout: 'app.log: syntax error at 12:30' } }), false);
     });
 
+    it('detects a failure delivered as plain PostToolUse with trailing exit=N (real payload)', () => {
+      const failed = { stdout: 'total ports sum: 42021\nbash: line 50: syntax error: unexpected end of file\nexit=2', stderr: '', interrupted: false };
+      assert.strictEqual(detectFailure('post', { tool_response: failed }), true);
+      assert.strictEqual(detectFailure('post', { tool_response: { stdout: 'x\nexit=127', stderr: '' } }), true);
+      assert.strictEqual(detectFailure('post', { tool_response: { stdout: 'BUILD REPORT DONE\nexit=0', stderr: '' } }), false);
+      assert.strictEqual(detectFailure('post', { tool_response: { stdout: 'exit=1 was the old behaviour\nok', stderr: '' } }), false);
+    });
+
     it('detects unterminated heredoc warning in merged stdout (real Claude Code Bash shape)', () => {
       const res = {
         stdout: "/usr/bin/bash: line 5: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncall three body\nEO",
@@ -144,7 +152,7 @@ describe('unheredoc plugin tests', () => {
 
       assert.match(msg, /unheredoc: command saved to \.unheredoc\/0001\.sh \(30 lines\)\./);
       assert.match(msg, /  20\| line content 20/);
-      assert.match(msg, /Fix only the broken lines/);
+      assert.match(msg, /Do not resend the command\. Fix the broken lines .* sed -i/);
       assert.match(msg, /Rerun command: bash "\.unheredoc\/0001\.sh"/);
       assert.match(msg, /Note: runs in a subshell; cd\/export\/functions won't persist\./);
     });
