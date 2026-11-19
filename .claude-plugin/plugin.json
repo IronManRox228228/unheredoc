@@ -1,6 +1,6 @@
 {
   "name": "unheredoc",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Saves heredoc and long shell commands to a script file so a failed one is fixed with a small edit instead of resending the whole command.",
   "author": {
     "name": "IronManRox228228"
