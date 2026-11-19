@@ -94,6 +94,21 @@ function buildMessage(relPath, content = '', errorText = '', isPowerShell = fals
   ].filter(Boolean).join('\n');
 }
 
+function isBackgroundLaunch(data = {}) {
+  const res = data.tool_response;
+  return Boolean(
+    (res && typeof res === 'object' && res.backgroundTaskId) ||
+    (data.tool_input && data.tool_input.run_in_background === true)
+  );
+}
+
+function buildBackgroundNote(shownPath, isPowerShell = false) {
+  const rerun = isPowerShell
+    ? `pwsh -NoProfile -ExecutionPolicy Bypass -File "${shownPath}"`
+    : `bash "${shownPath}"`;
+  return `unheredoc: background command saved to ${shownPath}. If it fails, fix the broken lines there with one Bash sed -i and rerun it with: ${rerun}. Do not resend the command.`;
+}
+
 function getProjectDir(data = {}) {
   return process.env.CLAUDE_PROJECT_DIR || data?.cwd || process.cwd();
 }
@@ -235,6 +250,22 @@ function main(cliEvent) {
       if (!filename) return;
 
       const fullPath = path.join(dir, filename);
+
+      // A background launch fires PostToolUse at once with empty stdout and a backgroundTaskId.
+      // That is not the command's result: a later failure only arrives as a task notification,
+      // with no hook. Keep the script and tell the model where it is, once.
+      if (event === 'post' && isBackgroundLaunch(data)) {
+        const isPsBg = /\.ps1$/i.test(filename) || /powershell/i.test(data?.tool_name || '');
+        const shownBg = fullPath.split(path.sep).join('/');
+        fs.writeSync(1, JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: evName || 'PostToolUse',
+            additionalContext: buildBackgroundNote(shownBg, isPsBg)
+          }
+        }) + '\n');
+        return;
+      }
+
       if (!detectFailure(event, data)) {
         try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch {}
         delete index[id];
@@ -271,6 +302,8 @@ module.exports = {
   formatLine,
   getExcerpt,
   buildMessage,
+  isBackgroundLaunch,
+  buildBackgroundNote,
   getProjectDir,
   getUnheredocDir,
   ensureDir,

@@ -48,6 +48,7 @@ The model retains full autonomy over fixing the issue; the plugin never alters t
        - Bash: `bash "<path>"`
        - PowerShell: `pwsh -NoProfile -ExecutionPolicy Bypass -File "<path>"`
      - Tells the agent not to resend the command, but to fix the saved file with one `sed -i` (no `Read` needed) and rerun it.
+   - Background commands (`run_in_background`): the hook fires at launch, before the command has run. The script is kept, and the agent is told its path once, so a later failure can be fixed with a `sed -i` as well.
    - Failures are detected from `PostToolUseFailure`, from a nonzero exit code, and from the shapes Claude Code uses for failed commands that still arrive as a plain `PostToolUse` (a trailing `exit=N` line, bash's `syntax error` message, or the unterminated `here-document` warning).
 
 ## Installation

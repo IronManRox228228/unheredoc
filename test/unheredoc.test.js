@@ -11,7 +11,8 @@ const {
   findLikelyProblemLine,
   formatLine,
   getExcerpt,
-  buildMessage
+  buildMessage,
+  isBackgroundLaunch
 } = require('../hooks/unheredoc.js');
 
 describe('unheredoc plugin tests', () => {
@@ -374,6 +375,35 @@ describe('unheredoc plugin tests', () => {
       const parsed = JSON.parse(failRes.stdout);
       const psShown = path.join(tmpDir, '.unheredoc', psFilename).split(path.sep).join('/');
       assert.ok(parsed.hookSpecificOutput.additionalContext.includes(`Rerun command: pwsh -NoProfile -ExecutionPolicy Bypass -File "${psShown}"`));
+    });
+
+    it('keeps the script and says where it is when a command is launched in the background', () => {
+      // Real shape: PostToolUse fires at launch with empty stdout and a backgroundTaskId.
+      const toolUseId = 'tool_test_bg_1';
+      const command = 'cat <<\'EOF\'\nbg body\nEOF\nsleep 5\nexit 2';
+      const env = { ...process.env, CLAUDE_PROJECT_DIR: tmpDir };
+      spawnSync(process.execPath, [scriptPath, 'pre'], {
+        input: JSON.stringify({ cwd: tmpDir, hook_event_name: 'PreToolUse', tool_name: 'Bash',
+          tool_input: { command, run_in_background: true }, tool_use_id: toolUseId }),
+        encoding: 'utf8', env
+      });
+      const before = new Set(fs.readdirSync(path.join(tmpDir, '.unheredoc')));
+      const postRes = spawnSync(process.execPath, [scriptPath, 'post'], {
+        input: JSON.stringify({ cwd: tmpDir, hook_event_name: 'PostToolUse', tool_name: 'Bash',
+          tool_input: { command, run_in_background: true }, tool_use_id: toolUseId,
+          tool_response: { stdout: '', stderr: '', interrupted: false, isImage: false, noOutputExpected: false, backgroundTaskId: 'bv8462okg' } }),
+        encoding: 'utf8', env
+      });
+      assert.strictEqual(postRes.status, 0);
+      const ctx = JSON.parse(postRes.stdout).hookSpecificOutput.additionalContext;
+      assert.match(ctx, /unheredoc: background command saved to .*\.sh\. If it fails, fix the broken lines there with one Bash sed -i/);
+      assert.match(ctx, /Do not resend the command/);
+      // The saved script must still exist after the launch event.
+      const saved = [...before].filter(f => /^\d+.*\.sh$/.test(f)).sort().pop();
+      assert.ok(fs.existsSync(path.join(tmpDir, '.unheredoc', saved)));
+      assert.strictEqual(isBackgroundLaunch({ tool_response: { backgroundTaskId: 'x' } }), true);
+      assert.strictEqual(isBackgroundLaunch({ tool_input: { run_in_background: true } }), true);
+      assert.strictEqual(isBackgroundLaunch({ tool_response: { stdout: 'ok' }, tool_input: {} }), false);
     });
 
     it('tolerates invalid or missing input without crashing', () => {
