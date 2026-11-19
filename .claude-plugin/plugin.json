@@ -1,0 +1,12 @@
+{
+  "name": "unheredoc",
+  "version": "0.1.0",
+  "description": "Saves heredoc and long shell commands to a script file so a failed one is fixed with a small edit instead of resending the whole command.",
+  "author": {
+    "name": "IronManRox228228"
+  },
+  "homepage": "https://github.com/IronManRox228228/unheredoc",
+  "repository": "https://github.com/IronManRox228228/unheredoc",
+  "license": "Apache-2.0",
+  "keywords": ["heredoc", "bash", "powershell", "hooks", "tokens"]
+}
